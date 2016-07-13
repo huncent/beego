@@ -38,6 +38,10 @@ var (
 	beeTemplateExt = []string{"tpl", "html"}
 )
 
+func ExecuteTemplate(wr io.Writer, name string, data interface{}) error {
+	err := executeTemplate(wr, name, data)
+	return err
+}
 func executeTemplate(wr io.Writer, name string, data interface{}) error {
 	if BConfig.RunMode == DEV {
 		templatesLock.RLock()
