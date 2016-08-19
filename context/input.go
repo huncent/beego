@@ -89,6 +89,9 @@ func (input *BeegoInput) Site() string {
 
 // Scheme returns request scheme as "http" or "https".
 func (input *BeegoInput) Scheme() string {
+	if scheme := input.Header("X-Forwarded-Proto"); scheme != "" {
+		return scheme
+	}
 	if input.Context.Request.URL.Scheme != "" {
 		return input.Context.Request.URL.Scheme
 	}
@@ -296,6 +299,14 @@ func (input *BeegoInput) SetParam(key, val string) {
 	}
 	input.pvalues = append(input.pvalues, val)
 	input.pnames = append(input.pnames, key)
+}
+
+// ResetParams clears any of the input's Params
+// This function is used to clear parameters so they may be reset between filter
+// passes.
+func (input *BeegoInput) ResetParams() {
+	input.pnames = input.pnames[:0]
+	input.pvalues = input.pvalues[:0]
 }
 
 // Query returns input data item string by a given string.
