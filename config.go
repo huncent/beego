@@ -19,9 +19,11 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 
 	"github.com/astaxie/beego/config"
+	"github.com/astaxie/beego/context"
 	"github.com/astaxie/beego/logs"
 	"github.com/astaxie/beego/session"
 	"github.com/astaxie/beego/utils"
@@ -34,6 +36,7 @@ type Config struct {
 	RouterCaseSensitive bool
 	ServerName          string
 	RecoverPanic        bool
+	RecoverFunc         func(*context.Context)
 	CopyRequestBody     bool
 	EnableGzip          bool
 	MaxMemory           int64
@@ -83,17 +86,18 @@ type WebConfig struct {
 
 // SessionConfig holds session related config
 type SessionConfig struct {
-	SessionOn               bool
-	SessionProvider         string
-	SessionName             string
-	SessionGCMaxLifetime    int64
-	SessionProviderConfig   string
-	SessionCookieLifeTime   int
-	SessionAutoSetCookie    bool
-	SessionDomain           string
-	EnableSidInHttpHeader   bool //	enable store/get the sessionId into/from http headers
-	SessionNameInHttpHeader string
-	EnableSidInUrlQuery     bool //	enable get the sessionId from Url Query params
+	SessionOn                    bool
+	SessionProvider              string
+	SessionName                  string
+	SessionGCMaxLifetime         int64
+	SessionProviderConfig        string
+	SessionCookieLifeTime        int
+	SessionAutoSetCookie         bool
+	SessionDomain                string
+	SessionDisableHTTPOnly       bool // used to allow for cross domain cookies/javascript cookies.
+	SessionEnableSidInHTTPHeader bool //	enable store/get the sessionId into/from http headers
+	SessionNameInHTTPHeader      string
+	SessionEnableSidInURLQuery   bool //	enable get the sessionId from Url Query params
 }
 
 // LogConfig holds Log related config
@@ -140,6 +144,40 @@ func init() {
 	if err = parseConfig(appConfigPath); err != nil {
 		panic(err)
 	}
+	if err = os.Chdir(AppPath); err != nil {
+		panic(err)
+	}
+}
+
+func recoverPanic(ctx *context.Context) {
+	if err := recover(); err != nil {
+		if err == ErrAbort {
+			return
+		}
+		if !BConfig.RecoverPanic {
+			panic(err)
+		}
+		if BConfig.EnableErrorsShow {
+			if _, ok := ErrorMaps[fmt.Sprint(err)]; ok {
+				exception(fmt.Sprint(err), ctx)
+				return
+			}
+		}
+		var stack string
+		logs.Critical("the request url is ", ctx.Input.URL())
+		logs.Critical("Handler crashed with error", err)
+		for i := 1; ; i++ {
+			_, file, line, ok := runtime.Caller(i)
+			if !ok {
+				break
+			}
+			logs.Critical(fmt.Sprintf("%s:%d", file, line))
+			stack = stack + fmt.Sprintln(fmt.Sprintf("%s:%d", file, line))
+		}
+		if BConfig.RunMode == DEV {
+			showErr(err, ctx, stack)
+		}
+	}
 }
 
 func newBConfig() *Config {
@@ -149,6 +187,7 @@ func newBConfig() *Config {
 		RouterCaseSensitive: true,
 		ServerName:          "beegoServer:" + VERSION,
 		RecoverPanic:        true,
+		RecoverFunc:         recoverPanic,
 		CopyRequestBody:     false,
 		EnableGzip:          false,
 		MaxMemory:           1 << 26, //64MB
@@ -186,17 +225,18 @@ func newBConfig() *Config {
 			XSRFKey:                "beegoxsrf",
 			XSRFExpire:             0,
 			Session: SessionConfig{
-				SessionOn:               false,
-				SessionProvider:         "memory",
-				SessionName:             "beegosessionID",
-				SessionGCMaxLifetime:    3600,
-				SessionProviderConfig:   "",
-				SessionCookieLifeTime:   0, //set cookie default is the browser life
-				SessionAutoSetCookie:    true,
-				SessionDomain:           "",
-				EnableSidInHttpHeader:   false, //	enable store/get the sessionId into/from http headers
-				SessionNameInHttpHeader: "Beegosessionid",
-				EnableSidInUrlQuery:     false, //	enable get the sessionId from Url Query params
+				SessionOn:                    false,
+				SessionProvider:              "memory",
+				SessionName:                  "beegosessionID",
+				SessionGCMaxLifetime:         3600,
+				SessionProviderConfig:        "",
+				SessionDisableHTTPOnly:       false,
+				SessionCookieLifeTime:        0, //set cookie default is the browser life
+				SessionAutoSetCookie:         true,
+				SessionDomain:                "",
+				SessionEnableSidInHTTPHeader: false, //	enable store/get the sessionId into/from http headers
+				SessionNameInHTTPHeader:      "Beegosessionid",
+				SessionEnableSidInURLQuery:   false, //	enable get the sessionId from Url Query params
 			},
 		},
 		Log: LogConfig{
@@ -259,6 +299,10 @@ func assignConfig(ac config.Configer) error {
 	}
 
 	if lo := ac.String("LogOutputs"); lo != "" {
+		// if lo is not nil or empty
+		// means user has set his own LogOutputs
+		// clear the default setting to BConfig.Log.Outputs
+		BConfig.Log.Outputs = make(map[string]string)
 		los := strings.Split(lo, ";")
 		for _, v := range los {
 			if logType2Config := strings.SplitN(v, ",", 2); len(logType2Config) == 2 {

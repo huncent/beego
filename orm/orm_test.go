@@ -227,7 +227,7 @@ func TestModelSyntax(t *testing.T) {
 	user := &User{}
 	ind := reflect.ValueOf(user).Elem()
 	fn := getFullName(ind.Type())
-	mi, ok := modelCache.getByFN(fn)
+	mi, ok := modelCache.getByFullName(fn)
 	throwFail(t, AssertIs(ok, true))
 
 	mi, ok = modelCache.get("user")
@@ -577,6 +577,10 @@ func TestCRUD(t *testing.T) {
 	err = dORM.Read(&ub)
 	throwFail(t, err)
 	throwFail(t, AssertIs(ub.Name, "name"))
+
+	num, err = dORM.Delete(&ub, "name")
+	throwFail(t, err)
+	throwFail(t, AssertIs(num, 1))
 }
 
 func TestInsertTestData(t *testing.T) {
@@ -905,6 +909,16 @@ func TestSetCond(t *testing.T) {
 	num, err = qs.SetCond(cond2).Count()
 	throwFail(t, err)
 	throwFail(t, AssertIs(num, 2))
+
+	cond3 := cond.AndNotCond(cond.And("status__in", 1))
+	num, err = qs.SetCond(cond3).Count()
+	throwFail(t, err)
+	throwFail(t, AssertIs(num, 2))
+
+	cond4 := cond.And("user_name", "slene").OrNotCond(cond.And("user_name", "slene"))
+	num, err = qs.SetCond(cond4).Count()
+	throwFail(t, err)
+	throwFail(t, AssertIs(num, 3))
 }
 
 func TestLimit(t *testing.T) {
@@ -2135,13 +2149,13 @@ func TestSnake(t *testing.T) {
 		"i":           "i",
 		"I":           "i",
 		"iD":          "i_d",
-		"ID":          "id",
-		"NO":          "no",
-		"NOO":         "noo",
-		"NOOooOOoo":   "noo_oo_oo_oo",
-		"OrderNO":     "order_no",
+		"ID":          "i_d",
+		"NO":          "n_o",
+		"NOO":         "n_o_o",
+		"NOOooOOoo":   "n_o_ooo_o_ooo",
+		"OrderNO":     "order_n_o",
 		"tagName":     "tag_name",
-		"tag_Name":    "tag_name",
+		"tag_Name":    "tag__name",
 		"tag_name":    "tag_name",
 		"_tag_name":   "_tag_name",
 		"tag_666name": "tag_666name",
